@@ -1,8 +1,10 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"net/http"
+	_ "net/http/pprof"
 	"time"
 
 	"github.com/ncabatoff/go-libzfs"
@@ -96,17 +98,33 @@ func init() {
 }
 
 func main() {
+	var (
+		listenAddress = flag.String("web.listen-address", ":9254", "Address on which to expose metrics and web interface.")
+		metricsPath   = flag.String("web.telemetry-path", "/metrics", "Path under which to expose metrics.")
+	)
+	flag.Parse()
+
+	go collect()
+
+	http.Handle(*metricsPath, prometheus.Handler())
+
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`<html>
+			<head><title>ZFS Exporter</title></head>
+			<body>
+			<h1>ZFS Exporter</h1>
+			<p><a href="` + *metricsPath + `">Metrics</a></p>
+			</body>
+			</html>`))
+	})
+	http.ListenAndServe(*listenAddress, nil)
+}
+
+func collect() {
 	pools, err := zfs.PoolOpenAll()
 	if err != nil {
 		log.Fatal("error opening pools: %v", err)
 	}
-	go serve(pools)
-
-	http.Handle("/metrics", prometheus.Handler())
-	http.ListenAndServe(":9054", nil)
-}
-
-func serve(pools []zfs.Pool) {
 	for {
 		for _, pool := range pools {
 			poolstats(pool)
@@ -147,7 +165,6 @@ func vdevStats(pool zfs.Pool) {
 	if err != nil {
 		log.Printf("unable to read vdevtree for pool '%s': %v", poolname(pool), err)
 	}
-	// printpooltree(pool, vdt)
 	visitVdevs(pool, vdt, vdevCollector)
 }
 
