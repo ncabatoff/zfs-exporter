@@ -8,6 +8,8 @@ metrics.  Run
 
 to see them.
 
+Sample dashboard is available at [grafana.net](https://grafana.net/dashboards/328).
+
 ## Caveats
 
 Currently doesn't handle pool changes gracefully, you'll have to kill and
@@ -15,18 +17,21 @@ restart it if you create/import or destroy/export any pools.
 
 libzfs is not a stable or official interface, so this could break with any new ZFS release.
 
-Requires root privileges on Linux.  For the security conscious, run it with -web.listen-address=localhost:9254.  If you're not running prometheus on the same host, write a little cronjob that does
+Requires root privileges on Linux.  For the security conscious, run it with -web.listen-address=localhost:9254.  
+
+If you're not running prometheus on the same host, either use my
+[exporter-proxy](https://github.com/ncabatoff/exporter-proxy) or write a little cronjob that does
 
   curl http://localhost:9254/metrics > mydir/zfs.tmp && mv mydir/zfs.tmp mydir/zfs.prom
 
-Configure node_exporter with -collector.textfile.directory=mydir and it will publish the stats to
-allow remote scraping.
+Configure node_exporter with -collector.textfile.directory=mydir and it will
+publish the stats to allow remote scraping.
 
 ## See also
 
 https://github.com/eliothedeman/zfs_exporter
 
-Same idea, but implemented by parsing hte output of zpool using github.com/mistifyio/go-zfs.
+Same idea, but implemented by parsing the output of zpool using github.com/mistifyio/go-zfs.
 
 https://github.com/eripa/prometheus-zfs
 
