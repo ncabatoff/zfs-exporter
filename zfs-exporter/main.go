@@ -2,11 +2,12 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
 
-	"github.com/bicomsystems/go-libzfs"
+	"github.com/ncabatoff/go-libzfs"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -73,15 +74,20 @@ var (
 		"pool status enum: CorruptCache, MissingDevR, MissingDevNr, CorruptLabelR, CorruptLabelNr, BadGUIDSum, CorruptPool, CorruptData, FailingDev, VersionNewer, HostidMismatch, IoFailureWait, IoFailureContinue, BadLog, Errata, UnsupFeatRead, UnsupFeatWrite, FaultedDevR, FaultedDevNr, VersionOlder, FeatDisabled, Resilvering, OfflineDev, RemovedDev, Ok",
 		[]string{"poolname"},
 		nil)
+
+	collecterrsDesc = prometheus.NewDesc(
+		"zfs_zpool_collecterrors",
+		"errors harvesting ZFS metrics",
+		[]string{"poolname"},
+		nil)
 )
 
 type (
-	ZfsCollector struct{}
+	ZfsCollector struct {
+		pools    []zfs.Pool
+		poolerrs map[string]int
+	}
 )
-
-func init() {
-	prometheus.MustRegister(&ZfsCollector{})
-}
 
 func main() {
 	var (
@@ -89,6 +95,14 @@ func main() {
 		metricsPath   = flag.String("web.telemetry-path", "/metrics", "Path under which to expose metrics.")
 	)
 	flag.Parse()
+
+	z := NewZfsCollector()
+	err := z.Init()
+	if err != nil {
+		log.Printf("%s", err)
+		return
+	}
+	prometheus.MustRegister(z)
 
 	http.Handle(*metricsPath, prometheus.Handler())
 
@@ -122,64 +136,97 @@ func (z *ZfsCollector) Describe(ch chan<- *prometheus.Desc) {
 	// TODO add error metric
 }
 
-// Collect implements prometheus.Collector.
-func (z *ZfsCollector) Collect(ch chan<- prometheus.Metric) {
+func NewZfsCollector() *ZfsCollector {
+	return &ZfsCollector{poolerrs: make(map[string]int)}
+}
+
+func (z *ZfsCollector) Init() error {
 	pools, err := zfs.PoolOpenAll()
 	if err != nil {
-		log.Fatal("error opening pools: %v", err)
+		return fmt.Errorf("error opening pools: %v", err)
+	}
+	z.pools = pools
+	return nil
+}
+
+// Collect implements prometheus.Collector.
+func (z *ZfsCollector) Collect(ch chan<- prometheus.Metric) {
+	for _, pool := range z.pools {
+		z.collectPool(ch, pool)
+	}
+}
+
+func (z *ZfsCollector) collectPool(ch chan<- prometheus.Metric, pool zfs.Pool) {
+	poolName := poolname(pool)
+	if _, ok := z.poolerrs[poolName]; !ok {
+		z.poolerrs[poolName] = 0
 	}
 
-	for _, pool := range pools {
+	err := pool.RefreshStats()
+	if err != nil {
+		log.Printf("unable to refresh status for pool '%s': %v", poolName, err)
+		z.poolerrs[poolName]++
+	}
+
+	var vdt zfs.VDevTree
+	if err == nil {
 		ch <- prometheus.MustNewConstMetric(poolstateDesc,
 			prometheus.GaugeValue,
 			poolstate(pool),
-			poolname(pool))
+			poolName)
 
 		ch <- prometheus.MustNewConstMetric(poolstatusDesc,
 			prometheus.GaugeValue,
 			poolstatus(pool),
-			poolname(pool))
+			poolName)
 
-		vdt, err := pool.VDevTree()
+		vdt, err = pool.VDevTree()
 		if err != nil {
-			log.Printf("unable to read vdevtree for pool '%s': %v", poolname(pool), err)
+			log.Printf("unable to read vdevtree for pool '%s': %v", poolName, err)
+			z.poolerrs[poolName]++
 		}
-		visitVdevs(pool, vdt, func(pool zfs.Pool, vdt zfs.VDevTree) {
-			poolName := poolname(pool)
-			vType := string(vdt.Type)
-
-			ch <- prometheus.MustNewConstMetric(vdevstateDesc, prometheus.GaugeValue,
-				float64(vdt.Stat.State), poolName, vType, vdt.Name)
-			ch <- prometheus.MustNewConstMetric(vdevallocDesc, prometheus.GaugeValue,
-				float64(vdt.Stat.Alloc), poolName, vType, vdt.Name)
-			ch <- prometheus.MustNewConstMetric(vdevspaceDesc, prometheus.GaugeValue,
-				float64(vdt.Stat.Space), poolName, vType, vdt.Name)
-			ch <- prometheus.MustNewConstMetric(vdevfragDesc, prometheus.GaugeValue,
-				float64(vdt.Stat.Fragmentation), poolName, vType, vdt.Name)
-
-			ch <- prometheus.MustNewConstMetric(vdeverrorsDesc, prometheus.CounterValue,
-				float64(vdt.Stat.ReadErrors), poolName, vType, vdt.Name, "read")
-			ch <- prometheus.MustNewConstMetric(vdeverrorsDesc, prometheus.CounterValue,
-				float64(vdt.Stat.WriteErrors), poolName, vType, vdt.Name, "write")
-			ch <- prometheus.MustNewConstMetric(vdeverrorsDesc, prometheus.CounterValue,
-				float64(vdt.Stat.ChecksumErrors), poolName, vType, vdt.Name, "checksum")
-
-			for optype := zfs.ZIOTypeRead; optype < zfs.ZIOTypes; optype++ {
-				ch <- prometheus.MustNewConstMetric(vdevopsDesc, prometheus.CounterValue,
-					float64(vdt.Stat.Ops[optype]),
-					poolName, vType, vdt.Name, zioTypeNames[optype])
-			}
-
-			for optype := zfs.ZIOTypeRead; optype < zfs.ZIOTypes; optype++ {
-				ch <- prometheus.MustNewConstMetric(vdevbytesDesc, prometheus.CounterValue,
-					float64(vdt.Stat.Bytes[optype]),
-					poolName, vType, vdt.Name, zioTypeNames[optype])
-			}
-		})
-
-		pool.Close()
 	}
 
+	ch <- prometheus.MustNewConstMetric(collecterrsDesc,
+		prometheus.CounterValue,
+		float64(z.poolerrs[poolName]),
+		poolName)
+
+	if err != nil {
+		return
+	}
+
+	visitVdevs(pool, vdt, func(pool zfs.Pool, vdt zfs.VDevTree) {
+		vType := string(vdt.Type)
+
+		ch <- prometheus.MustNewConstMetric(vdevstateDesc, prometheus.GaugeValue,
+			float64(vdt.Stat.State), poolName, vType, vdt.Name)
+		ch <- prometheus.MustNewConstMetric(vdevallocDesc, prometheus.GaugeValue,
+			float64(vdt.Stat.Alloc), poolName, vType, vdt.Name)
+		ch <- prometheus.MustNewConstMetric(vdevspaceDesc, prometheus.GaugeValue,
+			float64(vdt.Stat.Space), poolName, vType, vdt.Name)
+		ch <- prometheus.MustNewConstMetric(vdevfragDesc, prometheus.GaugeValue,
+			float64(vdt.Stat.Fragmentation), poolName, vType, vdt.Name)
+
+		ch <- prometheus.MustNewConstMetric(vdeverrorsDesc, prometheus.CounterValue,
+			float64(vdt.Stat.ReadErrors), poolName, vType, vdt.Name, "read")
+		ch <- prometheus.MustNewConstMetric(vdeverrorsDesc, prometheus.CounterValue,
+			float64(vdt.Stat.WriteErrors), poolName, vType, vdt.Name, "write")
+		ch <- prometheus.MustNewConstMetric(vdeverrorsDesc, prometheus.CounterValue,
+			float64(vdt.Stat.ChecksumErrors), poolName, vType, vdt.Name, "checksum")
+
+		for optype := zfs.ZIOTypeRead; optype < zfs.ZIOTypes; optype++ {
+			ch <- prometheus.MustNewConstMetric(vdevopsDesc, prometheus.CounterValue,
+				float64(vdt.Stat.Ops[optype]),
+				poolName, vType, vdt.Name, zioTypeNames[optype])
+		}
+
+		for optype := zfs.ZIOTypeRead; optype < zfs.ZIOTypes; optype++ {
+			ch <- prometheus.MustNewConstMetric(vdevbytesDesc, prometheus.CounterValue,
+				float64(vdt.Stat.Bytes[optype]),
+				poolName, vType, vdt.Name, zioTypeNames[optype])
+		}
+	})
 }
 
 func poolstatus(pool zfs.Pool) float64 {
