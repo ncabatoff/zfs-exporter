@@ -4,7 +4,9 @@ Prometheus metrics exporter for ZFS.
 It's much the same data you get from zpool status and zpool iostat, but in the form of Prometheus
 metrics.  Run
 
-  curl http://localhost:9254/metrics
+```
+curl -s http://localhost:9254/metrics
+```
 
 to see them.
 
@@ -22,9 +24,11 @@ Requires root privileges on Linux.  For the security conscious, run it with -web
 If you're not running prometheus on the same host, either use my
 [exporter-proxy](https://github.com/ncabatoff/exporter-proxy) or write a little cronjob that does
 
-  curl http://localhost:9254/metrics > mydir/zfs.tmp && mv mydir/zfs.tmp mydir/zfs.prom
+```
+curl -s http://localhost:9254/metrics > mydir/zfs.tmp && mv mydir/zfs.tmp mydir/zfs.prom
+```
 
-Configure node_exporter with -collector.textfile.directory=mydir and it will
+Configure node_exporter with `-collector.textfile.directory=mydir` and it will
 publish the stats to allow remote scraping.
 
 ## See also
