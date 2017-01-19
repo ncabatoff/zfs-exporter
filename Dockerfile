@@ -1,4 +1,4 @@
-# **** NOTE ****
+ **** NOTE ****
 # This doesn't yet yield a usable docker image.  I can't seem to get libzfs to initialize,
 # even if I bind /dev/zfs and /dev/zvols in.  I'm including it anyway because it took time
 # to get it to this point and I may return to the struggle at some point in the future.
@@ -8,13 +8,21 @@
 FROM golang
 
 # Build the zfs-exporter command inside the container.
+
+#add the contrib repo to install the ZFS libs
+RUN echo "deb http://ftp.debian.org/debian jessie-backports main contrib" >> /etc/apt/sources.list.d/backports.list
+
 RUN apt-get update
 RUN apt-get install lsb-release
-RUN wget http://archive.zfsonlinux.org/debian/pool/main/z/zfsonlinux/zfsonlinux_6_all.deb
-RUN dpkg -i zfsonlinux_6_all.deb
-RUN apt-get update
-RUN apt-get --yes install libzfs-dev
-RUN go get github.com/ncabatoff/go-libzfs github.com/prometheus/client_golang/prometheus 
+
+
+#Use debian libdev pkg to replace the 404'ed ZoL pkg
+RUN apt-get install --yes libzfslinux-dev
+
+RUN dpkg --configure -a
+
+
+RUN go get github.com/ncabatoff/go-libzfs github.com/prometheus/client_golang/prometheus
 
 # Copy the local package files to the container's workspace.
 ADD zfs-exporter /go/src/github.com/ncabatoff/zfs-exporter
