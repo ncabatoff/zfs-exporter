@@ -24,43 +24,43 @@ var (
 	vdevopsDesc = prometheus.NewDesc(
 		"zfs_zpool_vdevops_total",
 		"number of operations performed.",
-		[]string{"poolname", "vdevtype", "vdevname", "vdevoptype"},
+		[]string{"poolname", "vdevtype", "vdevname", "vdevid", "vdevoptype"},
 		nil)
 
 	vdevbytesDesc = prometheus.NewDesc(
 		"zfs_zpool_vdevbytes_total",
 		"number of bytes handled",
-		[]string{"poolname", "vdevtype", "vdevname", "vdevoptype"},
+		[]string{"poolname", "vdevtype", "vdevname", "vdevid", "vdevoptype"},
 		nil)
 
 	vdeverrorsDesc = prometheus.NewDesc(
 		"zfs_zpool_errors_total",
 		"number of errors seen",
-		[]string{"poolname", "vdevtype", "vdevname", "errortype"},
+		[]string{"poolname", "vdevtype", "vdevname", "vdevid", "errortype"},
 		nil)
 
 	vdevstateDesc = prometheus.NewDesc(
 		"zfs_zpool_vdevstate",
 		"vdev state: Unknown, Closed, Offline, Removed, CantOpen, Faulted, Degraded, Healthy.",
-		[]string{"poolname", "vdevtype", "vdevname"},
+		[]string{"poolname", "vdevtype", "vdevname", "vdevid"},
 		nil)
 
 	vdevallocDesc = prometheus.NewDesc(
 		"zfs_zpool_allocated_bytes",
 		"number of bytes allocated (usage)",
-		[]string{"poolname", "vdevtype", "vdevname"},
+		[]string{"poolname", "vdevtype", "vdevname", "vdevid"},
 		nil)
 
 	vdevspaceDesc = prometheus.NewDesc(
 		"zfs_zpool_space_bytes",
 		"size of the vdev in bytes (total capacity).",
-		[]string{"poolname", "vdevtype", "vdevname"},
+		[]string{"poolname", "vdevtype", "vdevname", "vdevid"},
 		nil)
 
 	vdevfragDesc = prometheus.NewDesc(
 		"zfs_zpool_fragmentation_percent",
 		"device fragmentation percentage",
-		[]string{"poolname", "vdevtype", "vdevname"},
+		[]string{"poolname", "vdevtype", "vdevname", "vdevid"},
 		nil)
 
 	poolstateDesc = prometheus.NewDesc(
@@ -152,6 +152,7 @@ func (z *ZfsCollector) Init() error {
 // Collect implements prometheus.Collector.
 func (z *ZfsCollector) Collect(ch chan<- prometheus.Metric) {
 	for _, pool := range z.pools {
+		// log.Printf("collecting pool %s", poolname(pool))
 		z.collectPool(ch, pool)
 	}
 }
@@ -198,33 +199,35 @@ func (z *ZfsCollector) collectPool(ch chan<- prometheus.Metric, pool zfs.Pool) {
 
 	visitVdevs(pool, vdt, func(pool zfs.Pool, vdt zfs.VDevTree) {
 		vType := string(vdt.Type)
+		// log.Printf("visiting pool %s vdev %s id %d type %s path %s", poolname(pool), vdt.Name, vdt.Id, vType, vdt.Path)
 
+		id := fmt.Sprintf("%d", vdt.Id)
 		ch <- prometheus.MustNewConstMetric(vdevstateDesc, prometheus.GaugeValue,
-			float64(vdt.Stat.State), poolName, vType, vdt.Name)
+			float64(vdt.Stat.State), poolName, vType, vdt.Name, id)
 		ch <- prometheus.MustNewConstMetric(vdevallocDesc, prometheus.GaugeValue,
-			float64(vdt.Stat.Alloc), poolName, vType, vdt.Name)
+			float64(vdt.Stat.Alloc), poolName, vType, vdt.Name, id)
 		ch <- prometheus.MustNewConstMetric(vdevspaceDesc, prometheus.GaugeValue,
-			float64(vdt.Stat.Space), poolName, vType, vdt.Name)
+			float64(vdt.Stat.Space), poolName, vType, vdt.Name, id)
 		ch <- prometheus.MustNewConstMetric(vdevfragDesc, prometheus.GaugeValue,
-			float64(vdt.Stat.Fragmentation), poolName, vType, vdt.Name)
+			float64(vdt.Stat.Fragmentation), poolName, vType, vdt.Name, id)
 
 		ch <- prometheus.MustNewConstMetric(vdeverrorsDesc, prometheus.CounterValue,
-			float64(vdt.Stat.ReadErrors), poolName, vType, vdt.Name, "read")
+			float64(vdt.Stat.ReadErrors), poolName, vType, vdt.Name, id, "read")
 		ch <- prometheus.MustNewConstMetric(vdeverrorsDesc, prometheus.CounterValue,
-			float64(vdt.Stat.WriteErrors), poolName, vType, vdt.Name, "write")
+			float64(vdt.Stat.WriteErrors), poolName, vType, vdt.Name, id, "write")
 		ch <- prometheus.MustNewConstMetric(vdeverrorsDesc, prometheus.CounterValue,
-			float64(vdt.Stat.ChecksumErrors), poolName, vType, vdt.Name, "checksum")
+			float64(vdt.Stat.ChecksumErrors), poolName, vType, vdt.Name, id, "checksum")
 
 		for optype := zfs.ZIOTypeRead; optype < zfs.ZIOTypes; optype++ {
 			ch <- prometheus.MustNewConstMetric(vdevopsDesc, prometheus.CounterValue,
 				float64(vdt.Stat.Ops[optype]),
-				poolName, vType, vdt.Name, zioTypeNames[optype])
+				poolName, vType, vdt.Name, id, zioTypeNames[optype])
 		}
 
 		for optype := zfs.ZIOTypeRead; optype < zfs.ZIOTypes; optype++ {
 			ch <- prometheus.MustNewConstMetric(vdevbytesDesc, prometheus.CounterValue,
 				float64(vdt.Stat.Bytes[optype]),
-				poolName, vType, vdt.Name, zioTypeNames[optype])
+				poolName, vType, vdt.Name, id, zioTypeNames[optype])
 		}
 	})
 }
