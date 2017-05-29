@@ -1,0 +1,10 @@
+[Unit]
+Description=zfs-exporter
+
+[Service]
+Restart=always
+ExecStart=/root/src/github.com/ncabatoff/zfs-exporter/zfs-exporter
+
+[Install]
+WantedBy=default.target
+

@@ -1,0 +1,5 @@
+.*.sw?
+.vagrant
+zfs-exporter/zfs-exporter
+*.vdi
+*.retry

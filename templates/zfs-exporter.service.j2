@@ -1,0 +1,10 @@
+[Unit]
+Description=zfs-exporter
+
+[Service]
+Restart=always
+ExecStart={{ zfs_exporter_bin }} -web.listen-address ":{{ zfs_exporter_port }}"
+
+[Install]
+WantedBy=default.target
+

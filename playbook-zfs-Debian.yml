@@ -1,0 +1,27 @@
+---
+- block:
+    - apt: name={{ item }} state=present
+      with_items:
+      - zfsutils-linux
+      - libzfslinux-dev
+  when: ansible_distribution == 'Ubuntu'
+  
+- block:
+    - name: setup backports
+      shell: echo "deb http://ftp.debian.org/debian jessie-backports main contrib" > /etc/apt/sources.list.d/backports.list
+    - name: update apt cache
+      apt: update_cache=yes
+    - name: install kernel headers
+      apt: state=present name=linux-headers-{{ ansible_kernel }}
+    - name: install zfs
+      apt: name={{ item }} state=present default_release=jessie-backports
+      with_items:
+      - zfs-dkms
+      - libzfslinux-dev
+  when: ansible_distribution == 'Debian'
+
+- block:
+  - name: install git
+    apt:
+      name: "git"
+      state: present

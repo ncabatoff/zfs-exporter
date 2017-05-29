@@ -1,11 +1,6 @@
-# **** NOTE ****
-# This doesn't yet yield a usable docker image.  I can't seem to get libzfs to initialize,
-# even if I bind /dev/zfs and /dev/zvols in.  I'm including it anyway because it took time
-# to get it to this point and I may return to the struggle at some point in the future.
-
 # Start from a Debian image with the latest version of Go installed
 # and a workspace (GOPATH) configured at /go.
-FROM golang
+FROM golang:1.8
 
 # Build the zfs-exporter command inside the container.
 
