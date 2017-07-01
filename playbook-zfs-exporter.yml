@@ -8,15 +8,15 @@
   roles:
   - role: gantsign.golang
   tasks:
-  - name: checkout zfs-exporter
-    git:
-      repo: https://github.com/ncabatoff/zfs-exporter.git
-      dest: /root/src/github.com/ncabatoff/zfs-exporter
+# - name: checkout zfs-exporter
+#   git:
+#     repo: https://github.com/ncabatoff/zfs-exporter.git
+#     dest: /root/src/github.com/ncabatoff/zfs-exporter
   - name: install zfs-exporter
     command: env GOROOT={{ golang_install_dir }} GOPATH=/root {{ golang_install_dir }}/bin/go build
     args:
       chdir: /root/src/github.com/ncabatoff/zfs-exporter/zfs-exporter
-      creates: "{{ zfs_exporter_bin }}"
+#     creates: "{{ zfs_exporter_bin }}"
   - name: create zfs-exporter systemd service file
     template:
       src: templates/zfs-exporter.service.j2

@@ -46,3 +46,17 @@ https://github.com/prometheus/node_exporter/pull/213
 PR for node_exporter to add support for ZFS metrics.  Currently also relies on shelling out, 
 which is apparently not allowed in node_exporter, so not clear where it's going. 
 
+## Testing
+
+To build and run zfs-exporter in a virtual environment, you need to install
+VirtualBox, Vagrant, and Ansible 2.2+.  Then
+
+```
+platform=jessie # or fedora25
+sudo ansible-galaxy install gantsign.golang
+cd zfs-vagrant-ansible/
+vagrant up $platform
+cd ..
+ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook -i zfs-vagrant-ansible/.vagrant/provisioners/ansible/inventory/vagrant_ansible_inventory playbook-zfs-exporter.yml -l $platform
+```
+

@@ -1,0 +1,3 @@
+[submodule "zfs-vagrant-ansible"]
+	path = zfs-vagrant-ansible
+	url = http://github.com/ncabatoff/zfs-vagrant-ansible
